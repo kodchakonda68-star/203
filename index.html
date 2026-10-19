@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Code Adventure</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Prompt:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Three.js CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- TWEEN.js for smooth animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+
+    <style>
+        :root {
+            --mc-gray: #c6c6c6;
+            --mc-dark: #555555;
+            --mc-border-light: #ffffff;
+            --mc-border-dark: #373737;
+        }
+
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #000;
+            overflow: hidden;
+            user-select: none;
+            touch-action: none;
+        }
+
+        h1, h2, h3, .pixel-text {
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        .mc-panel {
+            background-color: var(--mc-gray);
+            border: 4px solid;
+            border-top-color: var(--mc-border-light);
+            border-left-color: var(--mc-border-light);
+            border-bottom-color: var(--mc-border-dark);
+            border-right-color: var(--mc-border-dark);
+            color: #000;
+        }
+
+        .mc-btn {
+            background-color: var(--mc-gray);
+            border: 4px solid;
+            border-top-color: var(--mc-border-light);
+            border-left-color: var(--mc-border-light);
+            border-bottom-color: var(--mc-border-dark);
+            border-right-color: var(--mc-border-dark);
+            color: #000;
+            font-family: 'Prompt', sans-serif;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 0.05s;
+        }
+
+        .mc-btn:active {
+            border-top-color: var(--mc-border-dark);
+            border-left-color: var(--mc-border-dark);
+            border-bottom-color: var(--mc-border-light);
+            border-right-color: var(--mc-border-light);
+            transform: scale(0.98);
+        }
+
+        .mc-btn-primary { background-color: #4CAF50; color: white; }
+        .mc-btn-danger { background-color: #f44336; color: white; }
+        .mc-btn-action { background-color: #2196F3; color: white; }
+
+        /* Game UI */
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+        
+        #sidebar {
+            position: absolute;
+            right: 0;
+            top: 0;
+            width: 320px;
+            height: 100%;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            background: rgba(198, 198, 198, 0.9);
+            border-left: 4px solid var(--mc-border-light);
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+        #sidebar.active { transform: translateX(0); }
+
+        .cmd-chip {
+            background-color: #fff;
+            border: 2px solid var(--mc-dark);
+            padding: 8px 12px;
+            margin: 4px 0;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        #cmd-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            border: 4px inset var(--mc-dark);
+            background: #8b8b8b;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .heart {
+            color: #ff3333;
+            font-size: 1.5rem;
+            text-shadow: 2px 2px 0 #000;
+        }
+
+        /* Modals */
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .hidden { display: none !important; }
+
+        @media (max-width: 768px) {
+            #sidebar {
+                width: 100%;
+                height: 40%;
+                top: auto;
+                bottom: 0;
+                border-left: none;
+                border-top: 4px solid var(--mc-border-light);
+                transform: translateY(100%);
+            }
+            #sidebar.active { transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <!-- 3D Canvas -->
+        <div id="canvas-container"></div>
+
+        <!-- HUD: Level & Hearts -->
+        <div id="hud" class="absolute top-4 left-4 z-10 hidden">
+            <div class="mc-panel p-2 flex flex-col gap-2">
+                <div class="pixel-text text-sm" id="hud-level">Level: 1/10</div>
+                <div class="flex gap-1" id="hud-hearts"></div>
+            </div>
+        </div>
+
+        <!-- Sidebar Controller -->
+        <div id="sidebar" class="mc-panel">
+            <h3 class="text-center font-bold mb-2">ชุดคำสั่ง</h3>
+            <div id="cmd-list"></div>
+            <div class="grid grid-cols-2 gap-2 mb-2">
+                <button class="mc-btn py-2 text-sm" onclick="addCmd('forward')">⬆️ เดินหน้า</button>
+                <button class="mc-btn py-2 text-sm" onclick="addCmd('left')">⬅️ หันซ้าย</button>
+                <button class="mc-btn py-2 text-sm col-span-2" onclick="addCmd('right')">➡️ หันขวา</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button class="mc-btn mc-btn-danger py-2 text-sm" onclick="clearCmds()">ลบทั้งหมด</button>
+                <button class="mc-btn mc-btn-primary py-2 text-sm" id="btn-execute" onclick="executeCmds()">▶️ ประมวลผล</button>
+            </div>
+        </div>
+
+        <!-- Main Menu -->
+        <div id="screen-main" class="modal-overlay">
+            <div class="mc-panel p-8 text-center max-w-md w-full mx-4">
+                <h1 class="pixel-text text-2xl md:text-3xl mb-8 text-green-700 leading-tight">Voxel Code<br>Adventure</h1>
+                <div class="flex flex-col gap-4">
+                    <button class="mc-btn mc-btn-primary py-4 text-xl" onclick="showScreen('difficulty')">เล่นเกม</button>
+                    <button class="mc-btn py-3 text-lg" onclick="showScreen('help')">วิธีเล่น</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Help Modal -->
+        <div id="screen-help" class="modal-overlay hidden">
+            <div class="mc-panel p-6 max-w-lg w-full mx-4">
+                <h2 class="pixel-text text-xl mb-4 text-center">วิธีเล่น</h2>
+                <ul class="list-disc pl-5 mb-6 space-y-2 font-medium">
+                    <li>เป้าหมายคือพาตัวละครเดินไปเก็บ <strong>เพชรสีฟ้า</strong></li>
+                    <li>ใช้ปุ่มคำสั่งด้านขวาเพื่อเรียงลำดับการกระทำ</li>
+                    <li>กด <strong>ประมวลผล</strong> เพื่อให้ตัวละครทำตามคำสั่ง</li>
+                    <li>ระวัง! ห้ามเดินชนสิ่งกีดขวางหรือตกขอบโลก</li>
+                    <li>ศัตรูและอุปสรรคจะเปลี่ยนไปตามเวลากลางวัน-กลางคืน</li>
+                </ul>
+                <button class="mc-btn w-full py-3" onclick="showScreen('main')">กลับเมนูหลัก</button>
+            </div>
+        </div>
+
+        <!-- Difficulty Selection -->
+        <div id="screen-difficulty" class="modal-overlay hidden">
+            <div class="mc-panel p-6 text-center max-w-md w-full mx-4">
+                <h2 class="pixel-text text-xl mb-6">เลือกระดับความยาก</h2>
+                <div class="flex flex-col gap-3">
+                    <button class="mc-btn py-3 bg-green-200" onclick="startGame('easy')">Easy (แมพ 5x5, 3 หัวใจ)</button>
+                    <button class="mc-btn py-3 bg-yellow-200" onclick="startGame('medium')">Medium (แมพ 6x6, 3 หัวใจ)</button>
+                    <button class="mc-btn py-3 bg-orange-200" onclick="startGame('hard')">Hard (แมพ 7x7, 3 หัวใจ)</button>
+                    <button class="mc-btn py-3 mc-btn-danger text-white" onclick="startGame('hardcore')">Hardcore (แมพ 8x8, 1 หัวใจ)</button>
+                    <button class="mc-btn py-2 mt-4" onclick="showScreen('main')">กลับ</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message/Alert Modal -->
+        <div id="screen-message" class="modal-overlay hidden">
+            <div class="mc-panel p-8 text-center max-w-sm w-full mx-4">
+                <h2 id="msg-title" class="pixel-text text-2xl mb-4"></h2>
+                <p id="msg-desc" class="mb-6 font-bold text-lg"></p>
+                <button id="msg-btn" class="mc-btn mc-btn-primary w-full py-3" onclick="closeMessage()">ตกลง</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        
+        // Game State
+        const state = {
+            level: 1,
+            maxLevel: 10,
+            difficulty: 'easy',
+            gridSize: 5,
+            maxLives: 3,
+            lives: 3,
+            isNight: false,
+            commands: [],
+            isExecuting: false,
+            playerLogicPos: { x: 0, z: 0 },
+            playerFacing: 0, // 0: South(+z), 1: East(+x), 2: North(-z), 3: West(-x)
+            mapData: [] // 2D array: 0=empty, 1=goal, 2=obstacle
+        };
+
+        const config = {
+            easy: { size: 5, lives: 3 },
+            medium: { size: 6, lives: 3 },
+            hard: { size: 7, lives: 3 },
+            hardcore: { size: 8, lives: 1 }
+        };
+
+        let scene, camera, renderer, clock;
+        let playerGroup, goalMesh;
+        let mapGroup = new THREE.Group();
+        let playerLimbs = {};
+
+        // UI Functions
+        function showScreen(screenId) {
+            document.querySelectorAll('.modal-overlay').forEach(el => el.classList.add('hidden'));
+            if(screenId !== 'game') {
+                document.getElementById(`screen-${screenId}`).classList.remove('hidden');
+            }
+        }
+
+        function showMessage(title, desc, btnText, callback) {
+            document.getElementById('msg-title').innerText = title;
+            document.getElementById('msg-title').style.color = title === 'ผ่านด่าน!' ? '#4CAF50' : '#f44336';
+            document.getElementById('msg-desc').innerText = desc;
+            document.getElementById('msg-btn').innerText = btnText;
+            document.getElementById('screen-message').classList.remove('hidden');
+            window.currentMsgCallback = callback;
+        }
+
+        function closeMessage() {
+            document.getElementById('screen-message').classList.add('hidden');
+            if(window.currentMsgCallback) window.currentMsgCallback();
+        }
+
+        function updateHUD() {
+            document.getElementById('hud-level').innerText = `Level: ${state.level}/${state.maxLevel} ${state.isNight ? '(Night)' : '(Day)'}`;
+            let heartsHTML = '';
+            for(let i=0; i<state.maxLives; i++) {
+                heartsHTML += `<span class="heart">${i < state.lives ? '❤️' : '🖤'}</span>`;
+            }
+            document.getElementById('hud-hearts').innerHTML = heartsHTML;
+        }
+
+        // Command System
+        function addCmd(type) {
+            if(state.isExecuting) return;
+            state.commands.push(type);
+            renderCmds();
+        }
+
+        function removeCmd(index) {
+            if(state.isExecuting) return;
+            state.commands.splice(index, 1);
+            renderCmds();
+        }
+
+        function clearCmds() {
+            if(state.isExecuting) return;
+            state.commands = [];
+            renderCmds();
+        }
+
+        function renderCmds() {
+            const list = document.getElementById('cmd-list');
+            list.innerHTML = '';
+            const icons = { forward: '⬆️ เดินหน้า', left: '⬅️ หันซ้าย', right: '➡️ หันขวา' };
+            state.commands.forEach((cmd, i) => {
+                const div = document.createElement('div');
+                div.className = 'cmd-chip';
+                div.innerHTML = `<span>${i+1}. ${icons[cmd]}</span> <span class="text-red-500 cursor-pointer" onclick="removeCmd(${i})">✖</span>`;
+                list.appendChild(div);
+            });
+            list.scrollTop = list.scrollHeight;
+        }
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Day sky
+
+            // Camera (Perspective but setup like Isometric)
+            const aspect = container.clientWidth / container.clientHeight;
+            camera = new THREE.PerspectiveCamera(45, aspect, 1, 1000);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            setupLighting(false);
+
+            scene.add(mapGroup);
+            clock = new THREE.Clock();
+
+            // Resize handler
+            window.addEventListener('resize', onWindowResize);
+
+            animate();
+        }
+
+        function setupLighting(isNight) {
+            // Remove old lights
+            const lights = scene.children.filter(c => c.isLight);
+            lights.forEach(l => scene.remove(l));
+
+            scene.background = new THREE.Color(isNight ? 0x1a1a2e : 0x87CEEB);
+
+            const hemiLight = new THREE.HemisphereLight(
+                isNight ? 0x4a4a8a : 0xffffff, 
+                0x444444, 
+                isNight ? 0.3 : 0.6
+            );
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(
+                isNight ? 0x8a8aff : 0xffffee, 
+                isNight ? 0.5 : 1
+            );
+            dirLight.position.set(10, 20, 10);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -10;
+            dirLight.shadow.camera.right = 10;
+            dirLight.shadow.camera.top = 10;
+            dirLight.shadow.camera.bottom = -10;
+            scene.add(dirLight);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function getBasicMaterial(colorStr) {
+            return new THREE.MeshLambertMaterial({ color: colorStr });
+        }
+
+        function buildVoxelPlayer() {
+            const group = new THREE.Group();
+            
+            // Materials
+            const matSkin = getBasicMaterial(0xffccaa);
+            const matShirt = getBasicMaterial(0x00aaff);
+            const matPants = getBasicMaterial(0x3333aa);
+
+            // Head
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), matSkin);
+            head.position.y = 1.8;
+            head.castShadow = true;
+            group.add(head);
+
+            // Body
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.4), matShirt);
+            body.position.y = 0.8;
+            body.castShadow = true;
+            group.add(body);
+
+            // Helper to create limb with pivot at top
+            function createLimb(w, h, d, mat, x, y, z) {
+                const pivot = new THREE.Group();
+                pivot.position.set(x, y, z);
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+                mesh.position.y = -h/2; // Offset so pivot is at top
+                mesh.castShadow = true;
+                pivot.add(mesh);
+                return pivot;
+            }
+
+            // Arms
+            playerLimbs.armL = createLimb(0.4, 1.2, 0.4, matSkin, 0.6, 1.4, 0);
+            playerLimbs.armR = createLimb(0.4, 1.2, 0.4, matSkin, -0.6, 1.4, 0);
+            
+            // Legs
+            playerLimbs.legL = createLimb(0.4, 1.2, 0.4, matPants, 0.2, 0.2, 0);
+            playerLimbs.legR = createLimb(0.4, 1.2, 0.4, matPants, -0.2, 0.2, 0);
+
+            group.add(playerLimbs.armL, playerLimbs.armR, playerLimbs.legL, playerLimbs.legR);
+            return group;
+        }
+
+        function createObstacle(isNight) {
+            const group = new THREE.Group();
+            const types = isNight ? ['zombie', 'skeleton', 'creeper'] : ['tree', 'stone', 'villager'];
+            const type = types[Math.floor(Math.random() * types.length)];
+
+            if(type === 'tree') {
+                const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.4, 1, 0.4), getBasicMaterial(0x5c4033));
+                trunk.position.y = 0.5;
+                const leaves = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.5, 1.5), getBasicMaterial(0x2e8b57));
+                leaves.position.y = 1.5;
+                group.add(trunk, leaves);
+            } else if (type === 'stone') {
+                const stone = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.8), getBasicMaterial(0x808080));
+                stone.position.y = 0.3;
+                group.add(stone);
+            } else if (type === 'zombie' || type === 'villager') {
+                // Simplified Mob
+                const color = type === 'zombie' ? 0x228b22 : 0xd2b48c;
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.5, 0.5), getBasicMaterial(color));
+                body.position.y = 0.75;
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), getBasicMaterial(type === 'zombie'? 0x006400 : 0xffdead));
+                head.position.y = 1.8;
+                group.add(body, head);
+            } else if (type === 'creeper') {
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.2, 0.4), getBasicMaterial(0x32cd32));
+                body.position.y = 0.8;
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), getBasicMaterial(0x32cd32));
+                head.position.y = 1.7;
+                group.add(body, head);
+            } else {
+                // Default fallback (skeleton/box)
+                const box = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.8, 0.6), getBasicMaterial(0xdddddd));
+                box.position.y = 0.9;
+                group.add(box);
+            }
+
+            group.children.forEach(c => { c.castShadow = true; c.receiveShadow = true; });
+            return group;
+        }
+
+        function generateMap() {
+            // Clear old map
+            while(mapGroup.children.length > 0){ 
+                mapGroup.remove(mapGroup.children[0]); 
+            }
+
+            state.isNight = state.level % 2 === 0;
+            setupLighting(state.isNight);
+            
+            const size = state.gridSize;
+            state.mapData = Array(size).fill().map(() => Array(size).fill(0));
+
+            // Generate Path (Guaranteed completion)
+            let currX = 0, currZ = 0;
+            const path = new Set([`0,0`]);
+            
+            while(currX < size - 1 || currZ < size - 1) {
+                if (currX === size - 1) currZ++;
+                else if (currZ === size - 1) currX++;
+                else {
+                    if (Math.random() > 0.5) currX++; else currZ++;
+                }
+                path.add(`${currX},${currZ}`);
+            }
+
+            // Ground & Decor
+            const geoGround = new THREE.BoxGeometry(1, 1, 1);
+            const matTop = getBasicMaterial(state.isNight ? 0x1e3f1e : 0x4CAF50);
+            const matSide = getBasicMaterial(0x8B4513);
+            const matGround = [matSide, matSide, matTop, matSide, matSide, matSide];
+
+            for (let x = 0; x < size; x++) {
+                for (let z = 0; z < size; z++) {
+                    // Create Ground Block
+                    const block = new THREE.Mesh(geoGround, matGround);
+                    block.position.set(x, -0.5, z);
+                    block.receiveShadow = true;
+                    mapGroup.add(block);
+
+                    // Place Goal or Obstacles
+                    if (x === size - 1 && z === size - 1) {
+                        state.mapData[x][z] = 1; // Goal
+                        const geoGoal = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+                        const matGoal = new THREE.MeshPhongMaterial({ color: 0x00ffff, shininess: 100, emissive: 0x004444 });
+                        goalMesh = new THREE.Mesh(geoGoal, matGoal);
+                        goalMesh.position.set(x, 0.4, z);
+                        goalMesh.castShadow = true;
+                        mapGroup.add(goalMesh);
+                    } else if (x === 0 && z === 0) {
+                        // Start point, do nothing
+                    } else {
+                        // Scatter obstacles on non-path tiles (30% chance)
+                        if (!path.has(`${x},${z}`) && Math.random() < 0.4) {
+                            state.mapData[x][z] = 2; // Obstacle
+                            const obs = createObstacle(state.isNight);
+                            obs.position.set(x, 0, z);
+                            mapGroup.add(obs);
+                        }
+                    }
+                }
+            }
+
+            // Reset Player
+            if (!playerGroup) {
+                playerGroup = buildVoxelPlayer();
+                scene.add(playerGroup);
+            }
+            state.playerLogicPos = { x: 0, z: 0 };
+            state.playerFacing = 0; // South
+            
+            playerGroup.position.set(0, 0, 0);
+            playerGroup.rotation.y = 0;
+
+            // Setup Camera to view the whole board
+            const centerOffset = (size - 1) / 2;
+            camera.position.set(centerOffset + size*0.8, size*1.2, centerOffset + size*0.8);
+            camera.lookAt(centerOffset, 0, centerOffset);
+        }
+
+        function startGame(diff) {
+            state.difficulty = diff;
+            state.gridSize = config[diff].size;
+            state.maxLives = config[diff].lives;
+            state.lives = state.maxLives;
+            state.level = 1;
+            
+            if(!scene) initThreeJS();
+            
+            showScreen('game');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('sidebar').classList.add('active');
+            
+            clearCmds();
+            generateMap();
+            updateHUD();
+        }
+
+        function restartLevel(lostLife = false) {
+            if(lostLife) {
+                state.lives--;
+                updateHUD();
+                if(state.lives <= 0) {
+                    showMessage('Game Over', 'คุณหมดหัวใจแล้ว!', 'เล่นใหม่', () => showScreen('main'));
+                    return;
+                }
+            }
+            clearCmds();
+            generateMap(); // Regen map to re-position player
+        }
+
+        // Delay helper
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        async function executeCmds() {
+            if(state.isExecuting || state.commands.length === 0) return;
+            state.isExecuting = true;
+            document.getElementById('btn-execute').disabled = true;
+            document.getElementById('btn-execute').innerText = '⏳ กำลังประมวลผล...';
+
+            let crashed = false;
+            let reachedGoal = false;
+
+            for (let i = 0; i < state.commands.length; i++) {
+                const cmd = state.commands[i];
+                
+                // Highlight current command in UI (optional visual touch)
+                const chips = document.getElementById('cmd-list').children;
+                if(chips[i]) chips[i].style.borderColor = '#4CAF50';
+
+                if (cmd === 'forward') {
+                    const result = await moveForward();
+                    if(result === 'crash' || result === 'fall') {
+                        crashed = true;
+                        showMessage('อ๊ะ!', result === 'crash' ? 'ชนสิ่งกีดขวาง!' : 'ตกขอบโลก!', 'ลองใหม่', () => restartLevel(true));
+                        break;
+                    }
+                    if(result === 'goal') {
+                        reachedGoal = true;
+                        break;
+                    }
+                } else if (cmd === 'left') {
+                    await turn(-Math.PI/2, -1);
+                } else if (cmd === 'right') {
+                    await turn(Math.PI/2, 1);
+                }
+
+                await sleep(200); // Pause between commands
+            }
+
+            if(reachedGoal) {
+                if(state.level < state.maxLevel) {
+                    showMessage('ผ่านด่าน!', 'เก่งมาก ไปด่านต่อไปเลย', 'ลุยต่อ', () => {
+                        state.level++;
+                        restartLevel(false);
+                    });
+                } else {
+                    showMessage('ยินดีด้วย!', 'คุณเคลียร์เกมทั้งหมดแล้ว เก่งการเขียนโค้ดมากๆ!', 'กลับเมนูหลัก', () => showScreen('main'));
+                }
+            } else if(!crashed) {
+                // Finished commands but didn't reach goal
+                showMessage('ยังไม่ถึงเป้าหมาย', 'ลองวางลำดับคำสั่งใหม่ดูนะ', 'ลองใหม่', () => restartLevel(false));
+            }
+
+            state.isExecuting = false;
+            document.getElementById('btn-execute').disabled = false;
+            document.getElementById('btn-execute').innerText = '▶️ ประมวลผล';
+        }
+
+        function getDirOffset(facing) {
+            // 0: South(+z), 1: East(+x), 2: North(-z), 3: West(-x)
+            if(facing === 0) return {x: 0, z: 1};
+            if(facing === 1) return {x: 1, z: 0};
+            if(facing === 2) return {x: 0, z: -1};
+            if(facing === 3) return {x: -1, z: 0};
+        }
+
+        function moveForward() {
+            return new Promise(resolve => {
+                const offset = getDirOffset(state.playerFacing);
+                const targetX = state.playerLogicPos.x + offset.x;
+                const targetZ = state.playerLogicPos.z + offset.z;
+
+                // Check bounds
+                if(targetX < 0 || targetX >= state.gridSize || targetZ < 0 || targetZ >= state.gridSize) {
+                    // Fall animation
+                    new TWEEN.Tween(playerGroup.position)
+                        .to({ x: targetX, y: -2, z: targetZ }, 500)
+                        .easing(TWEEN.Easing.Quadratic.In)
+                        .onComplete(() => resolve('fall'))
+                        .start();
+                    return;
+                }
+
+                const tile = state.mapData[targetX][targetZ];
+                
+                if (tile === 2) { // Obstacle
+                    // Bump animation
+                    const origX = playerGroup.position.x;
+                    const origZ = playerGroup.position.z;
+                    new TWEEN.Tween(playerGroup.position)
+                        .to({ x: origX + offset.x*0.3, z: origZ + offset.z*0.3 }, 200)
+                        .yoyo(true).repeat(1)
+                        .easing(TWEEN.Easing.Quadratic.Out)
+                        .onComplete(() => resolve('crash'))
+                        .start();
+                    return;
+                }
+
+                // Successful move
+                state.playerLogicPos.x = targetX;
+                state.playerLogicPos.z = targetZ;
+
+                // Walk Animation
+                let walkTime = { t: 0 };
+                new TWEEN.Tween(walkTime)
+                    .to({ t: Math.PI * 4 }, 500) // 2 step cycles
+                    .onUpdate(() => {
+                        const angle = Math.sin(walkTime.t) * 0.5;
+                        playerLimbs.armL.rotation.x = angle;
+                        playerLimbs.armR.rotation.x = -angle;
+                        playerLimbs.legL.rotation.x = -angle;
+                        playerLimbs.legR.rotation.x = angle;
+                        // Bobbing
+                        playerGroup.position.y = Math.abs(Math.sin(walkTime.t / 2)) * 0.2;
+                    })
+                    .onComplete(() => {
+                        playerLimbs.armL.rotation.x = 0;
+                        playerLimbs.armR.rotation.x = 0;
+                        playerLimbs.legL.rotation.x = 0;
+                        playerLimbs.legR.rotation.x = 0;
+                        playerGroup.position.y = 0;
+                    })
+                    .start();
+
+                new TWEEN.Tween(playerGroup.position)
+                    .to({ x: targetX, z: targetZ }, 500)
+                    .easing(TWEEN.Easing.Linear.None)
+                    .onComplete(() => {
+                        if(tile === 1) resolve('goal');
+                        else resolve('ok');
+                    })
+                    .start();
+            });
+        }
+
+        function turn(angleOffset, dirOffset) {
+            return new Promise(resolve => {
+                state.playerFacing = (state.playerFacing + dirOffset + 4) % 4;
+                const targetRot = playerGroup.rotation.y + angleOffset;
+                
+                new TWEEN.Tween(playerGroup.rotation)
+                    .to({ y: targetRot }, 300)
+                    .easing(TWEEN.Easing.Quadratic.Out)
+                    .onComplete(resolve)
+                    .start();
+            });
+        }
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            TWEEN.update(time);
+
+            if (goalMesh) {
+                goalMesh.rotation.y += 0.02;
+                goalMesh.position.y = 0.4 + Math.sin(Date.now() * 0.003) * 0.1;
+            }
+
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+
+        // Start
+        showScreen('main');
+
+    </script>
+</body>
+</html>
